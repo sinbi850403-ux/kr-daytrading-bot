@@ -17,7 +17,6 @@ _MIN5_REN = {
     "stck_cntg_hour": "time",
     "stck_oprc": "open", "stck_hgpr": "high",
     "stck_lwpr": "low",  "stck_prpr": "close",
-    "acml_vol": "volume",
 }
 
 
@@ -125,9 +124,14 @@ class KISClient:
         if not all_rows:
             return pd.DataFrame()
 
-        df = pd.DataFrame(all_rows).rename(columns={
-            k: v for k, v in _MIN5_REN.items() if k in pd.DataFrame(all_rows).columns
-        })
+        df = pd.DataFrame(all_rows)
+        ren = {k: v for k, v in _MIN5_REN.items() if k in df.columns}
+        # 분봉 거래량: cntg_vol(해당 봉 체결량)이 정식 필드. acml_vol은 폴백.
+        if "cntg_vol" in df.columns:
+            ren["cntg_vol"] = "volume"
+        elif "acml_vol" in df.columns:
+            ren["acml_vol"] = "volume"
+        df = df.rename(columns=ren)
 
         # 수치 변환
         for c in ["open", "high", "low", "close", "volume"]:

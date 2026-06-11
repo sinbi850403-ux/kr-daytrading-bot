@@ -1,4 +1,4 @@
-"""KIS 클라이언트 테스트."""
+﻿"""KIS 클라이언트 테스트."""
 import pytest
 from unittest.mock import Mock, patch
 import pandas as pd
@@ -37,7 +37,7 @@ class TestKISClientGetMin5:
                     "stck_hgpr": "1050",
                     "stck_lwpr": "950",
                     "stck_prpr": "1020",
-                    "acml_vol": "1000000",
+                    "cntg_vol": "1000000",
                 },
                 {
                     "stck_cntg_hour": "093500",
@@ -45,7 +45,7 @@ class TestKISClientGetMin5:
                     "stck_hgpr": "1080",
                     "stck_lwpr": "1010",
                     "stck_prpr": "1050",
-                    "acml_vol": "1500000",
+                    "cntg_vol": "1500000",
                 },
             ]
         })
@@ -55,16 +55,16 @@ class TestKISClientGetMin5:
         assert "high" in result.columns or "stck_hgpr" in result.columns
         assert "low" in result.columns or "stck_lwpr" in result.columns
         assert "close" in result.columns or "stck_prpr" in result.columns
-        assert "volume" in result.columns or "acml_vol" in result.columns
+        assert "volume" in result.columns
 
     def test_get_min5_reverse_chronological(self):
         client = KISClient(self.cfg)
         client._get = Mock(return_value={
             "output2": [
                 {"stck_prpr": "1050", "stck_oprc": "1000", "stck_hgpr": "1050",
-                 "stck_lwpr": "950", "acml_vol": "100", "stck_cntg_hour": "153000"},
+                 "stck_lwpr": "950", "cntg_vol": "100", "stck_cntg_hour": "153000"},
                 {"stck_prpr": "1020", "stck_oprc": "1010", "stck_hgpr": "1030",
-                 "stck_lwpr": "1000", "acml_vol": "100", "stck_cntg_hour": "152500"},
+                 "stck_lwpr": "1000", "cntg_vol": "100", "stck_cntg_hour": "152500"},
             ]
         })
         result = client.get_min5("000001")
@@ -77,21 +77,34 @@ class TestKISClientGetMin5:
         client._get = Mock(return_value={
             "output2": [
                 {"stck_prpr": "0", "stck_oprc": "0", "stck_hgpr": "0",
-                 "stck_lwpr": "0", "acml_vol": "0", "stck_cntg_hour": "093000"},
+                 "stck_lwpr": "0", "cntg_vol": "0", "stck_cntg_hour": "093000"},
                 {"stck_prpr": "1000", "stck_oprc": "900", "stck_hgpr": "1000",
-                 "stck_lwpr": "800", "acml_vol": "100", "stck_cntg_hour": "093500"},
+                 "stck_lwpr": "800", "cntg_vol": "100", "stck_cntg_hour": "093500"},
             ]
         })
         result = client.get_min5("000001")
         assert len(result) == 1
         assert result.iloc[0]["close"] == 1000
 
-    def test_get_min5_coerces_to_numeric(self):
+    def test_get_min5_acml_vol_fallback(self):
+        """cntg_vol이 없고 acml_vol만 있는 응답도 volume으로 매핑된다."""
         client = KISClient(self.cfg)
         client._get = Mock(return_value={
             "output2": [
                 {"stck_prpr": "1000", "stck_oprc": "900", "stck_hgpr": "1100",
                  "stck_lwpr": "800", "acml_vol": "500000", "stck_cntg_hour": "093000"},
+            ]
+        })
+        result = client.get_min5("000001")
+        assert "volume" in result.columns
+        assert result.iloc[0]["volume"] == 500000
+
+    def test_get_min5_coerces_to_numeric(self):
+        client = KISClient(self.cfg)
+        client._get = Mock(return_value={
+            "output2": [
+                {"stck_prpr": "1000", "stck_oprc": "900", "stck_hgpr": "1100",
+                 "stck_lwpr": "800", "cntg_vol": "500000", "stck_cntg_hour": "093000"},
             ]
         })
         result = client.get_min5("000001")
@@ -227,7 +240,7 @@ class TestGetMin5Pagination:
             "output2": [
                 {"stck_cntg_hour": f"1{i:02d}000", "stck_prpr": str(100 + i),
                  "stck_oprc": str(100 + i - 1), "stck_hgpr": str(100 + i + 1),
-                 "stck_lwpr": str(100 + i - 2), "acml_vol": "1000"}
+                 "stck_lwpr": str(100 + i - 2), "cntg_vol": "1000"}
                 for i in range(20)
             ]
         }
@@ -246,7 +259,7 @@ class TestGetMin5Pagination:
             "output2": [
                 {"stck_cntg_hour": f"{101500 - i*5:06d}", "stck_prpr": str(100 + 30 - i),
                  "stck_oprc": str(100 + 30 - i - 1), "stck_hgpr": str(100 + 30 - i + 1),
-                 "stck_lwpr": str(100 + 30 - i - 2), "acml_vol": "1000"}
+                 "stck_lwpr": str(100 + 30 - i - 2), "cntg_vol": "1000"}
                 for i in range(30)
             ]
         }
@@ -257,7 +270,7 @@ class TestGetMin5Pagination:
             "output2": [
                 {"stck_cntg_hour": f"{92500 - i*5:06d}", "stck_prpr": str(70 + 30 - i),
                  "stck_oprc": str(70 + 30 - i - 1), "stck_hgpr": str(70 + 30 - i + 1),
-                 "stck_lwpr": str(70 + 30 - i - 2), "acml_vol": "1000"}
+                 "stck_lwpr": str(70 + 30 - i - 2), "cntg_vol": "1000"}
                 for i in range(30)
             ]
         }
@@ -282,13 +295,13 @@ class TestGetMin5Pagination:
         first_response = {
             "output2": [
                 {"stck_cntg_hour": "101000", "stck_prpr": "150",
-                 "stck_oprc": "149", "stck_hgpr": "151", "stck_lwpr": "148", "acml_vol": "1000"},
+                 "stck_oprc": "149", "stck_hgpr": "151", "stck_lwpr": "148", "cntg_vol": "1000"},
                 {"stck_cntg_hour": "100500", "stck_prpr": "149",
-                 "stck_oprc": "148", "stck_hgpr": "150", "stck_lwpr": "147", "acml_vol": "1000"},
+                 "stck_oprc": "148", "stck_hgpr": "150", "stck_lwpr": "147", "cntg_vol": "1000"},
             ] + [
                 {"stck_cntg_hour": f"10{i:02d}00", "stck_prpr": str(100 + i),
                  "stck_oprc": str(100 + i - 1), "stck_hgpr": str(100 + i + 1),
-                 "stck_lwpr": str(100 + i - 2), "acml_vol": "1000"}
+                 "stck_lwpr": str(100 + i - 2), "cntg_vol": "1000"}
                 for i in range(2, 30)
             ]
         }
@@ -297,9 +310,9 @@ class TestGetMin5Pagination:
         second_response = {
             "output2": [
                 {"stck_cntg_hour": "100500", "stck_prpr": "149",  # 중복
-                 "stck_oprc": "148", "stck_hgpr": "150", "stck_lwpr": "147", "acml_vol": "1000"},
+                 "stck_oprc": "148", "stck_hgpr": "150", "stck_lwpr": "147", "cntg_vol": "1000"},
                 {"stck_cntg_hour": "100000", "stck_prpr": "100",
-                 "stck_oprc": "99", "stck_hgpr": "101", "stck_lwpr": "98", "acml_vol": "1000"},
+                 "stck_oprc": "99", "stck_hgpr": "101", "stck_lwpr": "98", "cntg_vol": "1000"},
             ]
         }
 
@@ -319,7 +332,7 @@ class TestGetMin5Pagination:
             "output2": [
                 {"stck_cntg_hour": f"{101500 - i*5:06d}", "stck_prpr": str(150 - i),
                  "stck_oprc": str(149 - i), "stck_hgpr": str(151 - i),
-                 "stck_lwpr": str(148 - i), "acml_vol": "1000"}
+                 "stck_lwpr": str(148 - i), "cntg_vol": "1000"}
                 for i in range(30)
             ]
         }
@@ -328,9 +341,9 @@ class TestGetMin5Pagination:
         second_response = {
             "output2": [
                 {"stck_cntg_hour": "090000", "stck_prpr": "100",
-                 "stck_oprc": "99", "stck_hgpr": "101", "stck_lwpr": "98", "acml_vol": "1000"},
+                 "stck_oprc": "99", "stck_hgpr": "101", "stck_lwpr": "98", "cntg_vol": "1000"},
                 {"stck_cntg_hour": "085500", "stck_prpr": "99",
-                 "stck_oprc": "98", "stck_hgpr": "100", "stck_lwpr": "97", "acml_vol": "1000"},
+                 "stck_oprc": "98", "stck_hgpr": "100", "stck_lwpr": "97", "cntg_vol": "1000"},
             ]
         }
 
