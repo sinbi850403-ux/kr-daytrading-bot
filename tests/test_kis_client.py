@@ -207,3 +207,138 @@ class TestKISClientTokenManagement:
 
         assert token1 == token2
         assert session.post.call_count == 1  # Called only once, cached
+
+
+class TestGetMin5Pagination:
+    """5분봉 페이지네이션 (최대 60봉) 테스트."""
+
+    def setup_method(self):
+        self.cfg = Config(
+            app_key="test_key",
+            app_secret="test_secret",
+            cano="12345678",
+            is_paper=True
+        )
+
+    def test_get_min5_single_page_less_than_30(self):
+        """1회 호출이 30봉 미만이면 그대로 반환."""
+        client = KISClient(self.cfg)
+        first_response = {
+            "output2": [
+                {"stck_cntg_hour": f"1{i:02d}000", "stck_prpr": str(100 + i),
+                 "stck_oprc": str(100 + i - 1), "stck_hgpr": str(100 + i + 1),
+                 "stck_lwpr": str(100 + i - 2), "acml_vol": "1000"}
+                for i in range(20)
+            ]
+        }
+        client._get = Mock(return_value=first_response)
+        result = client.get_min5("000001")
+        # 20봉만 반환, 2회 호출 없음
+        assert len(result) == 20
+        assert client._get.call_count == 1
+
+    def test_get_min5_pagination_30_candles(self):
+        """1회 호출이 정확히 30봉이면 2회 호출해서 추가 데이터 수집."""
+        client = KISClient(self.cfg)
+
+        # 1차 호출: 30봉 (시간 101500 ~ 093000, 역순)
+        first_response = {
+            "output2": [
+                {"stck_cntg_hour": f"{101500 - i*5:06d}", "stck_prpr": str(100 + 30 - i),
+                 "stck_oprc": str(100 + 30 - i - 1), "stck_hgpr": str(100 + 30 - i + 1),
+                 "stck_lwpr": str(100 + 30 - i - 2), "acml_vol": "1000"}
+                for i in range(30)
+            ]
+        }
+
+        # 2차 호출: 과거 30봉 (시간 092500 ~ 081500, 역순)
+        # 1차의 가장 오래된 봉: 093000 → 2차는 그 시각 이전부터
+        second_response = {
+            "output2": [
+                {"stck_cntg_hour": f"{92500 - i*5:06d}", "stck_prpr": str(70 + 30 - i),
+                 "stck_oprc": str(70 + 30 - i - 1), "stck_hgpr": str(70 + 30 - i + 1),
+                 "stck_lwpr": str(70 + 30 - i - 2), "acml_vol": "1000"}
+                for i in range(30)
+            ]
+        }
+
+        # Mock을 2회 호출 구분 가능하게 설정
+        client._get = Mock(side_effect=[first_response, second_response])
+        result = client.get_min5("000001")
+
+        # 중복 제거 후 최대 60봉
+        assert len(result) <= 60
+        # 시간순 정렬 확인 (과거→현재)
+        times = result["time"].tolist()
+        assert times == sorted(times)
+        # 2회 호출 확인
+        assert client._get.call_count == 2
+
+    def test_get_min5_deduplicates_time(self):
+        """시간이 중복되는 경우 하나만 유지."""
+        client = KISClient(self.cfg)
+
+        # 1차: 30봉
+        first_response = {
+            "output2": [
+                {"stck_cntg_hour": "101000", "stck_prpr": "150",
+                 "stck_oprc": "149", "stck_hgpr": "151", "stck_lwpr": "148", "acml_vol": "1000"},
+                {"stck_cntg_hour": "100500", "stck_prpr": "149",
+                 "stck_oprc": "148", "stck_hgpr": "150", "stck_lwpr": "147", "acml_vol": "1000"},
+            ] + [
+                {"stck_cntg_hour": f"10{i:02d}00", "stck_prpr": str(100 + i),
+                 "stck_oprc": str(100 + i - 1), "stck_hgpr": str(100 + i + 1),
+                 "stck_lwpr": str(100 + i - 2), "acml_vol": "1000"}
+                for i in range(2, 30)
+            ]
+        }
+
+        # 2차: 첫 번째 응답과 겹치는 시간대 포함
+        second_response = {
+            "output2": [
+                {"stck_cntg_hour": "100500", "stck_prpr": "149",  # 중복
+                 "stck_oprc": "148", "stck_hgpr": "150", "stck_lwpr": "147", "acml_vol": "1000"},
+                {"stck_cntg_hour": "100000", "stck_prpr": "100",
+                 "stck_oprc": "99", "stck_hgpr": "101", "stck_lwpr": "98", "acml_vol": "1000"},
+            ]
+        }
+
+        client._get = Mock(side_effect=[first_response, second_response])
+        result = client.get_min5("000001")
+
+        # 시간별 고유값만 유지
+        unique_times = result["time"].nunique()
+        assert unique_times == len(result)
+
+    def test_get_min5_maintains_sorting(self):
+        """최종 결과는 과거→현재 시간순 정렬."""
+        client = KISClient(self.cfg)
+
+        # 1차: 30봉 (101500부터 역순)
+        first_response = {
+            "output2": [
+                {"stck_cntg_hour": f"{101500 - i*5:06d}", "stck_prpr": str(150 - i),
+                 "stck_oprc": str(149 - i), "stck_hgpr": str(151 - i),
+                 "stck_lwpr": str(148 - i), "acml_vol": "1000"}
+                for i in range(30)
+            ]
+        }
+
+        # 2차: 과거 데이터
+        second_response = {
+            "output2": [
+                {"stck_cntg_hour": "090000", "stck_prpr": "100",
+                 "stck_oprc": "99", "stck_hgpr": "101", "stck_lwpr": "98", "acml_vol": "1000"},
+                {"stck_cntg_hour": "085500", "stck_prpr": "99",
+                 "stck_oprc": "98", "stck_hgpr": "100", "stck_lwpr": "97", "acml_vol": "1000"},
+            ]
+        }
+
+        client._get = Mock(side_effect=[first_response, second_response])
+        result = client.get_min5("000001")
+
+        times = result["time"].tolist()
+        # 과거→현재 오름차순
+        assert times == sorted(times)
+        assert times[0] == "085500"
+        assert times[-1] == "101500"

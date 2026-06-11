@@ -22,11 +22,12 @@
 ### 2-2. 신호 발생 조건 (AND)
 
 ```
-① 최근 30봉 내 Bullish OB 존재
+① 최근 30봉 내 Bullish OB 존재 (60봉 프레임 내 과거 30봉 탐색)
 ② 현재 봉이 OB 구간(ob_low ~ ob_high) 내 진입
 ③ 현재 봉 양봉 마감 (close >= open)
-④ RVOL >= 1.5x (거래량 확인)
+④ RVOL >= 1.3x (거래량 확인, 완화: 1.5→1.3)
 ⑤ 현재가 > 5분봉 VWAP (추세 방향 확인)
+⑥ R (entry - sl) >= entry의 0.2% (손절폭 최소값 — 노이즈 필터)
 ```
 
 ### 2-3. 무효화 조건
@@ -56,17 +57,24 @@ config.py        ← 설정 (KIS 인증, 파라미터)
 
 | 용도 | TR_ID | 비고 |
 |------|-------|------|
-| 5분봉 조회 | `FHKST03010200` | 당일만, 1콜 최대 30봉 |
+| 5분봉 조회 | `FHKST03010200` | 당일만, 페이지네이션으로 최대 60봉 수집 |
 | 거래증가율 순위 | `FHPST01710000` | 후보 선정 |
 | 현재가 | `FHKST01010100` | 가격 확인 |
 
-**5분봉 파라미터**
+**5분봉 파라미터 및 페이지네이션**
 ```
-FID_ETC_CLS_CODE  = ""
-FID_COND_MRKT_DIV_CODE = "J"
-FID_INPUT_ISCD    = 종목코드
-FID_INPUT_HOUR_1  = "153000"   ← 당일 전체 (역순 30봉)
-FID_PW_DATA_INCU_YN = "N"
+1차 호출:
+  FID_ETC_CLS_CODE  = ""
+  FID_COND_MRKT_DIV_CODE = "J"
+  FID_INPUT_ISCD    = 종목코드
+  FID_INPUT_HOUR_1  = "153000"   ← 당일 전체 (역순 최대 30봉)
+  FID_PW_DATA_INCU_YN = "N"
+
+페이지네이션:
+  - 1차가 30봉 미만이면 종료 (장 초반)
+  - 1차가 정확히 30봉이면 2차 호출
+  - 2차: FID_INPUT_HOUR_1 = 1차 결과 가장 오래된 봉의 시각
+  - 최종: 시간 기준 중복 제거, 과거→현재 오름차순 정렬
 ```
 
 ---
@@ -74,12 +82,13 @@ FID_PW_DATA_INCU_YN = "N"
 ## 5. 설정 파라미터 (config.py)
 
 ```python
-swing_n: int = 3          # 스윙 포인트 좌우 봉 수
-ob_lookback: int = 30     # OB 탐색 범위(봉)
-rvol_threshold: float = 1.5  # 단타 RVOL 최소값
-scan_interval: int = 180  # 스캔 주기(초) = 3분
-top_n: int = 50           # 후보 종목 수
-threshold: int = 5        # 5개 조건 전부 충족
+swing_n: int = 3              # 스윙 포인트 좌우 봉 수
+ob_lookback: int = 30         # OB 탐색 범위(봉) — 60봉 프레임 내 과거 30봉
+rvol_threshold: float = 1.3   # 단타 RVOL 최소값 (완화: 1.5→1.3)
+min_r_pct: float = 0.2        # 최소 R 폭 (entry의 %) — 손절폭 최소값
+rvol_window: int = 20         # RVOL 계산 윈도우
+scan_interval: int = 180      # 스캔 주기(초) = 3분
+top_n: int = 50               # 후보 종목 수
 ```
 
 ---
@@ -90,10 +99,12 @@ threshold: int = 5        # 5개 조건 전부 충족
 @dataclass
 class DaySignal:
     symbol: str
-    name: str
     ob_low: float      # Bullish OB 하단
     ob_high: float     # Bullish OB 상단
     entry_price: float # 현재가
+    sl_price: float    # 손절 = OB 하단
+    tp1_price: float   # 익절1 = entry + R
+    tp2_price: float   # 익절2 = entry + 2R
     rvol: float
     vwap: float
     timestamp: str
@@ -105,8 +116,10 @@ class DaySignal:
 
 ```
 📊 [종목명] 123456 단타신호
-OB구간: 12,500 ~ 12,800
+OB구간: 12,500 ~ 12,800원
 현재가: 12,650원
+손절: 12,500원 (OB 하단) | R: 150원
+익절1: 12,800원 (1R) | 익절2: 12,950원 (2R)
 RVOL: 2.3x | VWAP: 12,420원
 조건: OB진입✅ 양봉✅ RVOL✅ VWAP위✅
 ```
@@ -124,8 +137,16 @@ RVOL: 2.3x | VWAP: 12,420원
 
 ---
 
-## 9. 미구현 (2단계)
+## 9. 구현 현황
 
+### 1단계 완료 ✅
+- 5분봉 ICT/OB 신호 감지
+- 텔레그램 알림 (손절/익절 라인 포함)
+- 60봉 페이지네이션 (KIS 1콜 30봉 한계 보완)
+- RVOL 1.3으로 완화 (저거래량 OB 되돌림 포함)
+- R 최소폭 필터 (entry의 0.2% 이상)
+
+### 2단계 (미구현)
 - KIS 시장가 자동 주문
-- 손절/익절 자동 관리 (ATR 기반)
+- 손절/익절 자동 관리 (주문 후 추적)
 - 동일 종목 중복 알림 방지 (당일 1회)

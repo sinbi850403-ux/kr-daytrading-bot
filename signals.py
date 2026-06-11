@@ -13,6 +13,9 @@ class DaySignal:
     ob_low:       float
     ob_high:      float
     entry_price:  float
+    sl_price:     float      # 손절 = OB 하단
+    tp1_price:    float      # 익절1 = entry + R
+    tp2_price:    float      # 익절2 = entry + 2R
     rvol:         float
     vwap:         float
     timestamp:    str = ""
@@ -30,6 +33,7 @@ def generate_signal(symbol: str, df5: pd.DataFrame,
       ③ 양봉 (close >= open)
       ④ RVOL >= cfg.rvol_threshold
       ⑤ 현재 종가 > VWAP
+      ⑥ R >= entry의 min_r_pct% (손절폭 최소값 — 노이즈 방지)
     """
     if df5 is None or len(df5) < cfg.swing_n * 2 + 3:
         return None
@@ -52,9 +56,23 @@ def generate_signal(symbol: str, df5: pd.DataFrame,
     if not (in_ob and is_bull and rvol_ok and above_vwap):
         return None
 
-    return DaySignal(symbol=symbol, ob_low=ob["ob_low"], ob_high=ob["ob_high"],
-                     entry_price=c, rvol=round(rv, 2), vwap=round(vw, 2),
-                     timestamp=timestamp)
+    # R 계산 및 최소폭 체크
+    sl = ob["ob_low"]
+    r = c - sl
+    r_pct = (r / c) * 100
+
+    if r_pct < cfg.min_r_pct:
+        return None
+
+    # 손절/익절 가격 계산
+    tp1 = c + r
+    tp2 = c + 2 * r
+
+    return DaySignal(
+        symbol=symbol, ob_low=ob["ob_low"], ob_high=ob["ob_high"],
+        entry_price=c, sl_price=sl, tp1_price=round(tp1, 0), tp2_price=round(tp2, 0),
+        rvol=round(rv, 2), vwap=round(vw, 2),
+        timestamp=timestamp)
 
 
 def _nan(v: float) -> bool:

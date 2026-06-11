@@ -80,7 +80,19 @@ class KISClient:
         return {}
 
     def get_min5(self, symbol: str) -> pd.DataFrame:
-        """당일 5분봉 조회 (최근 30봉, 과거→현재 정렬)."""
+        """
+        당일 5분봉 조회 (최대 60봉, 과거→현재 정렬).
+
+        페이지네이션:
+        - 1차 호출: FID_INPUT_HOUR_1="153000" → 최신 30봉
+        - 1차가 30봉 미만이면 종료 (장 초반)
+        - 1차가 30봉이면 2차 호출: 가장 오래된 봉의 시각을 FID_INPUT_HOUR_1로
+          → 그 시각 이전 30봉 추가 확보
+        - 결과: 시간 기준 중복 제거, 과거→현재 오름차순 정렬
+        """
+        all_rows = []
+
+        # 1차 호출: 최신 데이터
         params = {
             "FID_ETC_CLS_CODE":       "",
             "FID_COND_MRKT_DIV_CODE": "J",
@@ -91,15 +103,48 @@ class KISClient:
         j = self._get("/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice",
                       self.cfg.tr_id("min5"), params)
         rows = j.get("output2") or []
+
         if not rows:
             return pd.DataFrame()
-        df = pd.DataFrame(rows).rename(columns={k: v for k, v in _MIN5_REN.items()
-                                                if k in pd.DataFrame(rows).columns})
+
+        all_rows.extend(rows)
+
+        # 2차 호출: 30봉이 정확히 반환되면 추가 수집
+        if len(rows) == 30:
+            # 1차 결과의 가장 오래된 봉 시각 추출 (rows는 역순이므로 마지막)
+            oldest_time = rows[-1].get("stck_cntg_hour", "")
+            if oldest_time:
+                params["FID_INPUT_HOUR_1"] = oldest_time
+                j2 = self._get("/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice",
+                              self.cfg.tr_id("min5"), params)
+                rows2 = j2.get("output2") or []
+                if rows2:
+                    all_rows.extend(rows2)
+
+        # DataFrame 변환
+        if not all_rows:
+            return pd.DataFrame()
+
+        df = pd.DataFrame(all_rows).rename(columns={
+            k: v for k, v in _MIN5_REN.items() if k in pd.DataFrame(all_rows).columns
+        })
+
+        # 수치 변환
         for c in ["open", "high", "low", "close", "volume"]:
             if c in df.columns:
                 df[c] = pd.to_numeric(df[c], errors="coerce")
+
+        # 0 종가 필터링
         df = df.dropna(subset=["close"])
-        df = df[df["close"] > 0].iloc[::-1].reset_index(drop=True)
+        df = df[df["close"] > 0]
+
+        # 시간 기준 중복 제거 (time 컬럼이 있으면 사용)
+        if "time" in df.columns:
+            df = df.drop_duplicates(subset=["time"], keep="first")
+
+        # 역순 정렬 (API 반환이 최신→과거) → 과거→현재로 정렬
+        df = df.iloc[::-1].reset_index(drop=True)
+
         return df
 
     def volume_rank(self, blng_cls="1", market="0000"):

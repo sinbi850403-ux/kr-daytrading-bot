@@ -37,9 +37,10 @@ class Config:
 
     # ICT 파라미터
     swing_n:       int   = 3      # 스윙 포인트 좌우 봉 수
-    ob_lookback:   int   = 30     # OB 탐색 범위(봉)
-    rvol_threshold: float = 1.5
+    ob_lookback:   int   = 30     # OB 탐색 범위(봉) — 60봉 프레임 내 과거 30봉 기준
+    rvol_threshold: float = 1.3   # 단타 RVOL 최소값 (완화: 1.5→1.3) — OB 되돌림 구간은 저거래량이 보통
     rvol_window:   int   = 20
+    min_r_pct:     float = 0.2    # 최소 R 폭 (entry의 %) — 너무 좁은 손절은 노이즈에 쓸림
 
     # 거래시간 (KST HHMM)
     scan_start: str = "0905"
@@ -78,7 +79,7 @@ class Config:
             is_paper=g("ENABLE_REAL_TRADING","") not in ("1","YES","true","on"),
             top_n=_i("TOP_N",50),
             scan_interval=_i("SCAN_INTERVAL",180),
-            rvol_threshold=_f("RVOL_THRESHOLD",1.5),
+            rvol_threshold=_f("RVOL_THRESHOLD",1.3),
         )
 
     def validate(self) -> None:

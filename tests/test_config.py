@@ -10,8 +10,9 @@ class TestConfigDefaults:
         assert cfg.is_paper is True
         assert cfg.swing_n == 3
         assert cfg.ob_lookback == 30
-        assert cfg.rvol_threshold == 1.5
+        assert cfg.rvol_threshold == 1.3  # 완화됨 (1.5 → 1.3)
         assert cfg.rvol_window == 20
+        assert cfg.min_r_pct == 0.2  # 신규 필드
         assert cfg.scan_interval == 180
         assert cfg.scan_start == "0905"
         assert cfg.scan_end == "1525"

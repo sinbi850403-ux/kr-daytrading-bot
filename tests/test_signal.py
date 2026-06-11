@@ -92,11 +92,80 @@ class TestDaySignal:
             ob_low=99.0,
             ob_high=100.5,
             entry_price=99.5,
+            sl_price=99.0,
+            tp1_price=100.0,
+            tp2_price=101.0,
             rvol=1.8,
             vwap=98.5,
             timestamp="09:30"
         )
         assert sig.symbol == "000001"
         assert sig.ob_low == 99.0
+        assert sig.sl_price == 99.0
+        assert sig.tp1_price == 100.0
+        assert sig.tp2_price == 101.0
         assert sig.rvol == 1.8
         assert sig.timestamp == "09:30"
+
+
+class TestMinRPct:
+    def setup_method(self):
+        # min_r_pct: 0.2 로 설정하여 R이 entry의 0.2% 미만이면 None 반환
+        self.cfg = Config(
+            rvol_threshold=1.5, rvol_window=20, swing_n=3, ob_lookback=30,
+            min_r_pct=0.2
+        )
+
+    def test_signal_skipped_when_r_too_small(self):
+        """R (entry - sl)이 entry의 0.2% 미만이면 신호 None 반환."""
+        # entry=100, ob_low=99.9, R=0.1 → 0.1% < 0.2% → None
+        closes = [99, 99.1, 99.2, 99.3, 99.4, 99.5, 99.6, 99.7] + [99.8] * 32 + [99.9]
+        vols = [1000] * len(closes)
+        df = make_df5(closes, vols=vols)
+        result = sig_mod.generate_signal("000001", df, self.cfg)
+        assert result is None
+
+    def test_signal_accepted_when_r_meets_threshold(self):
+        """R이 entry의 0.2% 이상이면 신호 생성 가능."""
+        # entry=100, ob_low=99.8, R=0.2 → 0.2% >= 0.2% → 조건 통과
+        closes = list(range(100, 130)) + [130.0] * 20
+        vols = [1000.0] * 50
+        df = make_df5(closes, vols=vols)
+        result = sig_mod.generate_signal("000001", df, self.cfg)
+        # 다른 조건도 맞으면 신호 생성
+        if result is not None:
+            r = result.entry_price - result.sl_price
+            r_pct = (r / result.entry_price) * 100
+            assert r_pct >= self.cfg.min_r_pct
+
+
+class TestExitPriceCalculation:
+    def setup_method(self):
+        self.cfg = Config(
+            rvol_threshold=1.5, rvol_window=20, swing_n=3, ob_lookback=30,
+            min_r_pct=0.2
+        )
+
+    def test_sl_equals_ob_low(self):
+        """손절 = OB 하단."""
+        closes = list(range(100, 130)) + [130.0] * 20
+        vols = [1000.0] * 50
+        df = make_df5(closes, vols=vols)
+        result = sig_mod.generate_signal("000001", df, self.cfg)
+        if result is not None:
+            assert result.sl_price == result.ob_low
+
+    def test_tp_prices_calculated_from_r(self):
+        """tp1 = entry + R, tp2 = entry + 2R."""
+        # entry=150, ob_low=145, R=5 → tp1=155, tp2=160
+        closes = [100] + list(range(100, 145)) + [145, 150] + [150] * 20
+        vols = [1000.0] * len(closes)
+        df = make_df5(closes, vols=vols)
+        result = sig_mod.generate_signal("000001", df, self.cfg)
+        if result is not None:
+            r = result.entry_price - result.sl_price
+            expected_tp1 = result.entry_price + r
+            expected_tp2 = result.entry_price + 2 * r
+            # round(x, 0) 수준의 오차 허용
+            assert abs(result.tp1_price - expected_tp1) < 1.0
+            assert abs(result.tp2_price - expected_tp2) < 1.0

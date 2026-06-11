@@ -67,6 +67,9 @@ class TestDayBotRunCycle:
             ob_low=99.0,
             ob_high=100.0,
             entry_price=99.5,
+            sl_price=99.0,
+            tp1_price=100.0,
+            tp2_price=101.0,
             rvol=1.8,
             vwap=98.0,
             timestamp="10:30"
@@ -82,6 +85,9 @@ class TestDayBotRunCycle:
             ob_low=99.0,
             ob_high=100.0,
             entry_price=99.5,
+            sl_price=99.0,
+            tp1_price=100.0,
+            tp2_price=101.0,
             rvol=1.8,
             vwap=98.0
         )
@@ -104,6 +110,9 @@ class TestDayBotRunCycle:
             ob_low=99.0,
             ob_high=100.0,
             entry_price=99.5,
+            sl_price=99.0,
+            tp1_price=100.0,
+            tp2_price=101.0,
             rvol=1.8,
             vwap=98.0
         )
@@ -126,6 +135,9 @@ class TestDayBotRunCycle:
             ob_low=99.0,
             ob_high=100.0,
             entry_price=99.5,
+            sl_price=99.0,
+            tp1_price=100.0,
+            tp2_price=101.0,
             rvol=1.8,
             vwap=98.0
         )
@@ -134,6 +146,9 @@ class TestDayBotRunCycle:
             ob_low=49.0,
             ob_high=50.0,
             entry_price=49.5,
+            sl_price=49.0,
+            tp1_price=50.0,
+            tp2_price=51.0,
             rvol=1.5,
             vwap=48.0
         )
@@ -159,6 +174,9 @@ class TestDayBotRunCycle:
             ob_low=99.0,
             ob_high=100.0,
             entry_price=99.5,
+            sl_price=99.0,
+            tp1_price=100.0,
+            tp2_price=101.0,
             rvol=1.8,
             vwap=98.0
         )
@@ -167,6 +185,9 @@ class TestDayBotRunCycle:
             ob_low=49.0,
             ob_high=50.0,
             entry_price=49.5,
+            sl_price=49.0,
+            tp1_price=50.0,
+            tp2_price=51.0,
             rvol=1.5,
             vwap=48.0
         )
