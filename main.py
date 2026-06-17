@@ -13,6 +13,7 @@ from config import Config
 from kis_client import KISClient
 from scanner import DayScanner
 from notify import Notifier
+from hanto_monitor import HantoMonitor
 import signals as sig_mod
 
 logging.basicConfig(level=logging.INFO,
@@ -58,6 +59,8 @@ def main():
     scanner  = DayScanner(cfg, client)
     notifier = Notifier(cfg)
     bot      = DayBot(cfg, client, scanner, notifier)
+    hanto    = HantoMonitor(notifier)
+    hanto.start()
     mode = "모의" if cfg.is_paper else "⚠️실전"
     notifier.send(f"📊 단타 알림봇 ON [{mode}]\nRVOL {cfg.rvol_threshold}x | 3분 주기")
     while True:
